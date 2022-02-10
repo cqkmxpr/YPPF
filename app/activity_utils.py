@@ -1396,3 +1396,5 @@ def calcu_activity_bonus(activity):
     except:
         max_point = 6.0
     return min(point, max_point)
+
+    
