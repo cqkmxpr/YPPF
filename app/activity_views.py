@@ -758,6 +758,7 @@ def addActivity(request, aid=None):
         else:
             photo_id = "picture" + os.path.basename(photo).split(".")[0]
 
+
     html_display["today"] = datetime.now().strftime("%Y-%m-%d")
     if not edit:
         bar_display = utils.get_sidebar_and_navbar(request.user, "活动发起")
