@@ -1,14 +1,13 @@
-from django.dispatch.dispatcher import receiver
+from app.utils_dependency import *
 from app.models import (
     NaturalPerson,
     Organization,
     Notification,
     QandA,
 )
-import app.utils as utils
-from django.db import transaction
-from datetime import datetime
 from app.notification_utils import notification_create
+from app.utils import check_user_type, get_person_or_org
+
 
 def QA_create(sender, receiver, Q_text, anonymous_flag=False):
     # sender: user
@@ -50,9 +49,13 @@ def QA_ignore(QA_id, sender_flag=True):
         qa = QandA.objects.select_for_update().get(id=QA_id)
         # 如果两边都ignore了，就delete
         if sender_flag:
-            qa.status = QandA.Status.DELETE if qa.status == QandA.Status.IGNORE_RECEIVER else QandA.Status.IGNORE_SENDER
+            qa.status = (QandA.Status.DELETE
+                         if qa.status == QandA.Status.IGNORE_RECEIVER
+                         else QandA.Status.IGNORE_SENDER)
         else:
-            qa.status = QandA.Status.DELETE if qa.status == QandA.Status.IGNORE_SENDER else QandA.Status.IGNORE_RECEIVER
+            qa.status = (QandA.Status.DELETE
+                         if qa.status == QandA.Status.IGNORE_SENDER
+                         else QandA.Status.IGNORE_RECEIVER)
         qa.save()
 
 def QA_delete(QA_id):
@@ -65,64 +68,69 @@ def QA2Display(user):
     all_instances = dict()
     all_instances['send'], all_instances['receive'] = [], []
     instances = {
-        "send": QandA.objects.activated(sender_flag=True).select_related('receiver').filter(sender=user).order_by("-Q_time"),
-        "receive": QandA.objects.activated(receiver_flag=True).select_related('sender').filter(receiver=user).order_by("-Q_time"),
+        "send": QandA.objects.activated(sender_flag=True).filter(sender=user)
+                .select_related('receiver').order_by("-Q_time"),
+        "receive": QandA.objects.activated(receiver_flag=True).filter(receiver=user)
+                   .select_related('sender').order_by("-Q_time"),
     }
 
-    me = NaturalPerson.objects.get(person_id=user) if hasattr(user, 'naturalperson') \
-        else Organization.objects.get(organization_id=user)
-    my_name = me.name if hasattr(user, "naturalperson") else me.oname
+    me = get_person_or_org(user)
+    my_name = me.get_display_name()
     
     receiver_userids = instances['send'].values_list('receiver_id', flat=True)
     sender_userids = instances['receive'].values_list('sender_id', flat=True)
 
-    sender_persons = NaturalPerson.objects.filter(person_id__in=sender_userids).values_list('person_id', 'name')
+    sender_persons = NaturalPerson.objects.filter(
+        person_id__in=sender_userids).values_list('person_id', 'name')
     sender_persons = {userid: name for userid, name in sender_persons}
-    sender_orgs = Organization.objects.filter(organization_id__in=sender_userids).values_list('organization_id', 'oname')
+    sender_orgs = Organization.objects.filter(
+        organization_id__in=sender_userids).values_list('organization_id', 'oname')
     sender_orgs = {userid: name for userid, name in sender_orgs}
 
-    receiver_persons = NaturalPerson.objects.filter(person_id__in=receiver_userids).values_list('person_id', 'name')
+    receiver_persons = NaturalPerson.objects.filter(
+        person_id__in=receiver_userids).values_list('person_id', 'name')
     receiver_persons = {userid: name for userid, name in receiver_persons}
-    receiver_orgs = Organization.objects.filter(organization_id__in=receiver_userids).values_list('organization_id', 'oname')
+    receiver_orgs = Organization.objects.filter(
+        organization_id__in=receiver_userids).values_list('organization_id', 'oname')
     receiver_orgs = {userid: name for userid, name in receiver_orgs}
 
     for qa in instances['send']:
-        QA = dict()
-        QA['sender'] = my_name
+        send_QAs = dict()
+        send_QAs['sender'] = my_name
         if qa.anonymous_flag:
-            QA['sender'] += "(匿名)"
+            send_QAs['sender'] += "(匿名)"
         
-        _, user_type, _ = utils.check_user_type(qa.receiver)
-        if user_type == "Organization":
-            QA["receiver"] = receiver_orgs.get(qa.receiver_id)
+        _, user_type, _ = check_user_type(qa.receiver)
+        if user_type == UTYPE_ORG:
+            send_QAs["receiver"] = receiver_orgs.get(qa.receiver_id)
         else:
-            QA["receiver"] = receiver_persons.get(qa.receiver_id)
+            send_QAs["receiver"] = receiver_persons.get(qa.receiver_id)
 
-        QA['Q_text'] = qa.Q_text
-        QA['A_text'] = qa.A_text
-        QA['Q_time'] = qa.Q_time
-        QA['A_time'] = qa.A_time
-        QA['id'] = qa.id
-        QA['anwser_flag'] = (len(qa.A_text) != 0)
-        all_instances['send'].append(QA)
+        send_QAs['Q_text'] = qa.Q_text
+        send_QAs['A_text'] = qa.A_text
+        send_QAs['Q_time'] = qa.Q_time
+        send_QAs['A_time'] = qa.A_time
+        send_QAs['id'] = qa.id
+        send_QAs['anwser_flag'] = (len(qa.A_text) != 0)
+        all_instances['send'].append(send_QAs)
 
     for qa in instances['receive']:
-        QA = dict()
+        receive_QAs = dict()
         if qa.anonymous_flag:
-            QA['sender'] = "匿名者"
+            receive_QAs['sender'] = "匿名者"
         else:
-            _, user_type, _ = utils.check_user_type(qa.sender)
-            if user_type == "Organization":
-                QA["sender"] = sender_orgs.get(qa.sender_id)
+            _, user_type, _ = check_user_type(qa.sender)
+            if user_type == UTYPE_ORG:
+                receive_QAs["sender"] = sender_orgs.get(qa.sender_id)
             else:
-                QA["sender"] = sender_persons.get(qa.sender_id)
+                receive_QAs["sender"] = sender_persons.get(qa.sender_id)
         
-        QA['receiver'] = my_name
-        QA['Q_text'] = qa.Q_text
-        QA['A_text'] = qa.A_text
-        QA['Q_time'] = qa.Q_time
-        QA['A_time'] = qa.A_time
-        QA['id'] = qa.id
-        QA['anwser_flag'] = (len(qa.A_text) != 0)
-        all_instances['receive'].append(QA)
+        receive_QAs['receiver'] = my_name
+        receive_QAs['Q_text'] = qa.Q_text
+        receive_QAs['A_text'] = qa.A_text
+        receive_QAs['Q_time'] = qa.Q_time
+        receive_QAs['A_time'] = qa.A_time
+        receive_QAs['id'] = qa.id
+        receive_QAs['anwser_flag'] = (len(qa.A_text) != 0)
+        all_instances['receive'].append(receive_QAs)
     return all_instances
