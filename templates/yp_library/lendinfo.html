@@ -1,8 +1,20 @@
-{% extends "base.html" %}
+Student_ID: {{student_id}}<br />
 
-{% load static %}
+{% for reader_id, records in all_records.items %}
+[Reader ID: {{reader_id}}]<br />
+未还：<br />
+{% for record in records.returned_records_list %}
+书籍编号: {{record.book_id__id}} 索书号: {{record.book_id__identity_code}} 书名: {{record.book_id__title}} 作者:
+{{record.book_id__author}} 出版社:{{record.book_id__publisher}}
+借书时间: {{record.lend_time}} 截止时间: {{record.due_time}} 状态：{{record.status}}<br />
+{% endfor %}
+<br />
 
-
-{% block mainpage %}
-
-{% endblock %}
+已还：<br />
+{% for record in records.not_returned_records_list %}
+书籍编号: {{record.book_id__id}} 索书号: {{record.book_id__identity_code}} 书名: {{record.book_id__title}} 作者:
+{{record.book_id__author}} 出版社:{{record.book_id__publisher}}
+借书时间: {{record.lend_time}} 还书时间: {{record.return_time}} 状态：{{record.status}}<br />
+{% endfor %}
+<br />
+{% endfor %}
