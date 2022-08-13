@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'data_analysis',
     "scheduler",
     "yp_library",
+    "general",
 ]
 
 MIDDLEWARE = [
